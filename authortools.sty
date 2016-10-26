@@ -1,0 +1,423 @@
+%%  Package authortools
+%%
+%% Written by: Arie Tal
+%%
+%% This package provides useful tools for authors such as
+%%
+%% 1. TODO list management - done
+%% 2. Author notes (and replies) - done
+%% 3. Change tracking - done
+%% 4. Text highlighting - done
+%% 5. Read markers (graphical bookmarks) - tbd
+%%
+%% How to use this package:
+%% 1. Define the paper authors, using
+%%     \defineauthor{<name>}{<handle>}{<short/single letter handle>}{color}
+%%
+%%    for example:
+%%    \defineauthor{Arie}{arie}{a}{blue!60!black}
+%%    \defineauthor{Nachshon}{nachshon}{n}{purple}
+%%    \defineauthor{Erez}{erez}{e}{red!50!black}
+%%    
+%% 2. After defining the authors, a set of commands is going to be available for
+%%    each author. Assuming the first author defined above, the commands will be
+%%
+%%    \anote{<text>} - Add a text note
+%%    \anotedone{<text>} - Add a text note that is marked done
+%%    \areply{<text>} - To add within the context of a note
+%%    \ainsert{<text>} - Add text that is marked as inserted
+%%    \adelete{<text>} - Mark text as deleted
+%%    \achanged{<text1>}{<text2>} - Add text1 marked as inserted, and mark text2 
+%%                                  as deleted
+%%    \ahighlight{<text>} - Highlight the argument text (as if with a highlighter)
+%%
+%%    \arie - prints "Arie:" in the text in bold font, and the author's color
+%%    \arie[] - prints "Arie" as above
+%%    \arie[<text>] prints "Arie text" as above
+%%
+%% 3. Additional (general) commands
+%%    \todo{<text>} - Add a todo item
+%%    \todo[<callout>]{<text>} - Add a todo for an author, for example
+%%        \todo[\arie]{todo item}
+%%    \done{<todo or note>} - Mark a todo or note as done
+%%    \cboff - Turn of changebar functionality (for compatibility with figure*)
+%%    \cbon - Turn changebar functionality back on
+%%    \highlight{<text>} - Anonymously highlight text
+%%
+%%    \todolist - Print the list of todo items
+%%    \authornoteslist - Print the list of author notes
+%%
+%% Package options:
+%%
+%% hideall - A master switch for hiding all annotations
+%% hideauthornotes - Hide author ntoes
+%% showdoneauthornotes - Show author notes that have been marked done (hidden by default)
+%% hidechangetracking - Hide change tracking
+%% hidetodos - Hide todo items
+%% showcompletedtodos - Show completed todo items (hidden by default)
+%%
+%%
+%% Cool Tips & Tricks
+%% ==============
+%%
+%% 1) Note References
+%% --------------------
+%%
+%% You can do some cool stuff with notes. For example,
+%%
+%% \anote[\label{anote-mynote}]{This is my note about ....}
+%%
+%% and somewhere else in the text,
+%%
+%% \anote{blah blah as I mentioned in my note \ref{anote-mynote}, this ....}
+%%
+%% If the text in the second note is short (like quick ref), then the note # would 
+%% get filtered out of the text in the \ntoeslist. 
+%% You can still achieve the same effect by doing:
+%% 
+%% \anote[See my note \ref{anote-mynote}]{}
+%%
+%% Since the text between [ and ] is passed unfilitered to the note command
+%%
+%% Finally, in both cases hyper-linking works. Clicking on the note number 
+%% would jump that note.
+%%
+%%
+%% 2) Redirecting a note to multiple authors
+%% ------------------------------------------
+%%
+%% You can direct notes (and todos) to multiple authors by adding callouts
+%% to them between [ and ] of the note or todo command. 
+%%
+%% \todo[{\erez[]}, \nachshon]{Please review the paragraph above for correctness}
+%%
+%% Note that if you simply use [\erez, \nachshon] The text would show 
+%% Erez:, Nachshon: Please review ...
+%%
+%% However, by passing the optional argument to \erez as empty (and thus 
+%% removing the default ':' after the author's name) you would get the cleaner
+%% result of
+%% Erez, Nachshon: Please review ...
+%%
+
+
+ 
+
+
+
+\NeedsTeXFormat{LaTeX2e}[1999/12/01]
+\ProvidesPackage{authortools}
+\RequirePackage{tocloft}
+\RequirePackage{ifthen}
+\RequirePackage{totcount}
+\RequirePackage{pifont}
+\RequirePackage[dvipsnames]{xcolor}
+\RequirePackage[normalem]{ulem}
+\RequirePackage{changebar}
+\RequirePackage{hyperref}
+\hypersetup{
+	colorlinks,
+	citecolor=black,
+	filecolor=black,
+	linkcolor=black,
+	urlcolor=black
+}
+
+%% Some default options
+\newcommand{\AT@hideall}{false}
+\newcommand{\AT@hideauthornotes}{\AT@hideall}
+\newcommand{\AT@hidedoneauthornotes}{true}
+\newcommand{\AT@hidechangetracking}{\AT@hideall}
+\newcommand{\AT@hidetodos}{\AT@hideall}
+\newcommand{\AT@hidecompletedtodos}{true}
+
+%% Some options to show/hide some of the annotations
+\DeclareOption{hideall}{
+	\renewcommand{\AT@hideall}{true}
+}
+\DeclareOption{hideauthornotes}{
+	\renewcommand{\AT@hideauthornotes}{true}
+}
+\DeclareOption{showdoneauthornotes}{
+	\renewcommand{\AT@hidedoneauthornotes}{false}
+}
+
+\DeclareOption{hidechangetracking}{
+	\renewcommand{\AT@hidechangetracking}{true}
+}
+\DeclareOption{hidetodos}{
+	\renewcommand{\AT@hidetodos}{true}
+}
+\DeclareOption{showcompletedtodos}{
+	\renewcommand{\AT@hidecompletedtodos}{false}
+}
+
+%% ProcessOptions
+\ProcessOptions
+%% Implementation
+% Some internal facilities
+%%===============================================================
+%% \firstoftwo and \secondoftwo:
+%%...............................................................
+\long\def\firstoftwo#1#2{#1} \long\def\secondoftwo#1#2{#2}
+%%---------------------------------------------------------------
+%% \AtIfArgsFirstTokenIsMacro - takes three macro-arguments and
+%%              forks depending on whether the first argument
+%%              holds a first/leading token whose \meaning equals
+%%              one of the phrases "macro:", "\long macro:".
+%%              If so delivers the second argument, otherwise
+%%              delivers the third argument.
+%%
+%%              The macro is suitable for expansion contexts
+%%              and due to \romannumeral-expansion delivers the
+%%              result after two expansion steps/after "being
+%%              hit by two \expandafter-chains".
+%%
+%%              The case of the first argument being empty/not
+%%              holding any token at all is considered a case
+%%              where the argument does not hold a first/leading
+%%              token at all and thus does not hold a first/leading
+%%              token whose meaning equals one of the phrases
+%%              "macro:", "\long macro:".
+%%
+%%              The test does not rely on some token being
+%%              undefined. eTeX- or whatsoever extensions are not
+%%              required.
+%%
+%%              I assume there is room for improvement/shortening
+%%              the code.
+%%
+%%              Testing by means of macros for a leading
+%%              \outer-macro-token in the argument is somehat
+%%              obsolete and impossible as \outer-tokens cannot
+%%              occur inside macro-arguments.
+%%
+%%...............................................................
+\def\AtIfArgsFirstTokenIsMacro#1#2{%
+	\long\def\AtIfArgsFirstTokenIsMacro##1##2##3{%
+		\romannumeral\iffalse{\fi\expandafter\secondoftwo\expandafter
+			{\expandafter{\string##1}\expandafter\expandafter\expandafter
+				\firstoftwo\expandafter\expandafter\expandafter\firstoftwo
+				\expandafter\secondoftwo\expandafter{\expandafter{\iffalse}}\fi
+				\expandafter\secondoftwo\string}\expandafter\firstoftwo
+			\expandafter{\iffalse}\fi\iffalse{\fi
+				\expandafter\innerAtIfArgsFirstTokenIsMacro\meaning##1#1}{}%
+			{%
+				\iffalse{\fi
+					\expandafter\innerAtIfArgsFirstTokenIsLong\meaning##1#2 #1}{}%
+			}{\secondoftwo}%
+		}{\firstoftwo}%
+		{0 ##3}{0 ##2}%
+	}%
+	\long\def\innerAtIfArgsFirstTokenIsMacro##1#1{%
+		\innerAtIfArgsFirstTokenIs{##1}%
+	}%
+	\long\def\innerAtIfArgsFirstTokenIsLong##1#2 #1{%
+		\innerAtIfArgsFirstTokenIs{##1}%
+	}%
+	\long\def\innerAtIfArgsFirstTokenIs##1{%
+		\iffalse{\fi\expandafter\secondoftwo\expandafter{\string##1}%
+			\expandafter\firstoftwo\expandafter{\iffalse}\fi\expandafter
+			\expandafter\expandafter\firstoftwo}{\expandafter\expandafter
+			\expandafter\secondoftwo}\expandafter\secondoftwo\expandafter
+		{\iffalse}\fi
+	}%
+}%
+% Somehow get the catcode-12-token-phrases "macro:" and "\long"
+% as argument of \AtIfArgsFirstTokenIsMacro - hereby
+% it is relied on the usual catcode settings and on primitives not
+% being redefined and on integer parameters like \globaldefs and
+% \endlinechar and \escapechar holding usual values, thus:
+\begingroup
+\edef\AtIfArgsFirstTokenIsMacro{%
+	{\string m\string a\string c\string r\string o%
+		\string :}{\string\long}%
+}%
+\expandafter\endgroup%
+\expandafter\AtIfArgsFirstTokenIsMacro%
+\AtIfArgsFirstTokenIsMacro%
+%%===============================================================
+
+%\long\def\AT@proceed#1#2{
+%	\AtIfControlSequence{#1}{}{#2}
+%}
+
+
+\long\def\AT@extracta#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{  
+#1\if\relax\detokenize{#2}\relax\else...\fi}\fi}
+\long\def\AT@extractb#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extracta #2|\fi}\fi}
+\long\def\AT@extractc#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extractb #2|\fi}\fi}
+\long\def\AT@extractd#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extractc #2|\fi}\fi}
+\long\def\AT@extracte#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extractd #2|\fi}\fi}
+\long\def\AT@extractf#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extracte #2|\fi}\fi}
+\long\def\AT@extractg#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extractf #2|\fi}\fi}
+\long\def\AT@extracth#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extractg #2|\fi}\fi}
+\long\def\AT@extracti#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extracth #2|\fi}\fi}
+\long\def\AT@extractj#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extracti #2|\fi}\fi}
+
+
+
+%\long\def\AT@extractaaa#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{  #1\if\relax\detokenize{#2}\relax\else...\fi}\fi}
+%\long\def\AT@extractaa#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extractaaa #2|\fi}\fi}
+%\long\def\AT@extracta#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extractaa #2|\fi}\fi}
+%\long\def\AT@extract#1 #2|{ \ifx\par#1...\else\AtIfArgsFirstTokenIsMacro{#1}{...}{ #1\if\relax\detokenize{#2}\relax\else\AT@extracta #2|\fi}\fi}
+\newcommand{\AT@firstfiew}[1]{
+	\AT@extracte #1 |%
+}
+\newcommand{\AT@firstmore}[1]{
+	\AT@extractj #1 |%
+}
+
+%\newcommand{\abbreviate}[1]{\AT@firstfiew{#1}}
+
+\newcommand{\AT@listantitle}{\underline{\normalsize Author's notes \hspace{33ex} \normalfont page}}
+\newlistof{AT@anotes}{ton}{\AT@listantitle}
+\regtotcounter{AT@anotes}
+\newcommand{\AT@anoteslist}[1]{%
+	\refstepcounter{AT@anotes}
+	\addcontentsline{ton}{AT@anotes}{#1}}
+\ifthenelse{\equal{\AT@hideall}{false}}{%
+	\newcommand{\authornoteslist}{
+		\ifthenelse{\totvalue{AT@anotes} > 0}{%
+			\listofAT@anotes% ~\newline
+			%\noindent\makebox[\linewidth]{\rule{\columnwidth}{0.4pt}}
+		}{}
+	}}{\newcommand{\authornoteslist}{}}
+
+
+\newcommand{\AT@note}[7]{% 
+% #1 name
+% #2 counter
+% #3 color
+% #4 content
+% #5  done
+% #6 hide
+% #7 callout (or other latex code)
+	\ifthenelse{\equal{#6}{false}}{%
+		\refstepcounter{#2}
+		\long\def\AT@extracted{\AT@firstfiew{#4}}
+		\ifx\relax#7\relax \def\AT@sp{} \else \def\AT@sp{#7} \fi
+		\ifthenelse{\equal{#5}{done}}{%
+			\AT@anoteslist{{\checkmark \color{#3} \bf #1's note \arabic{#2}} ``\AT@sp\relax\AT@extracted''}}
+			{\AT@anoteslist{{\color{#3} \bf #1's note \arabic{#2}} ``\AT@sp\relax\AT@extracted''}}
+		\begin{quote}{%
+				\ifthenelse{\equal{#5}{done}}{ \checkmark }{}%
+				{\color{#3} \bf #1's note \arabic{#2}:}} {\AT@sp\color{#3}
+				#4}\end{quote}}{}}
+
+\newcommand{\AT@reply}[3]{% 
+	% #1 name
+	% #2 color
+	% #3 content
+	\ifthenelse{\equal{\AT@hideauthornotes}{false}}{%
+		\AT@anoteslist{\hspace{1cm}{\color{#2} \bf #1 replied}}
+		\begin{quote}{%
+				{\color{#2} \bf #1's reply:}} #3\end{quote}}{}}
+
+
+\def\AT@active{true}
+\newcommand\done[1]{\def\AT@active{false}
+#1
+\def\AT@active{true}}
+
+%\def\rest#1#2|{#1}
+%\newcommand\done[2]{\rest\string#1|%
+%	done #2}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% TODO management
+\newcommand{\AT@listtodotitle}{\underline{\normalsize TODOs \hspace{39ex} \normalfont page}}
+\newlistof{AT@todos}{tod}{\AT@listtodotitle}
+\regtotcounter{AT@todos}
+\newcommand{\AT@todolist}[1]{%
+	\refstepcounter{AT@todos}
+	\addcontentsline{tod}{AT@todos}{#1}}
+\ifthenelse{\equal{\AT@hideall}{false}}{%
+	\newcommand{\todolist}{
+		\ifthenelse{\totvalue{AT@todos} > 0}{%
+			\listofAT@todos% ~\newline
+			%\noindent\makebox[\linewidth]{\rule{\columnwidth}{0.4pt}}
+		}{}
+	}}{\newcommand{\todolist}{}}
+	
+	
+	\newcommand{\AT@todo}[4]{%
+		% #1 optional callout or any latex processed text 
+		% #2 content
+		% #3 done
+		% #4 hide
+		\long\def\AT@extracted{\AT@firstmore{#2}}
+		\ifthenelse{\equal{#4}{false}}{%
+			\refstepcounter{AT@todos}
+			\ifthenelse{\equal{#3}{done}}{%
+				\AT@todolist{\checkmark #1 \AT@extracted}}
+			{\AT@todolist{\ding{113} #1 \AT@extracted}}
+			\begin{quote}{%
+					\ifthenelse{\equal{#3}{done}}{ \checkmark }{\ding{113}}%
+					{ #1 \textbf{#2}}}\end{quote}}{}}
+
+\newcommand{\todo}[2][]{%   	  
+		\ifthenelse{\equal{true}{\AT@active}}%
+		{\AT@todo{#1}{#2}{wip}{\AT@hidetodos}}%
+		{\AT@todo{#1}{#2}{done}{\AT@hidecompletedtodos}}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Text highlighter
+\definecolor{highlighter}{RGB}{255,255,0}
+\newcommand{\highlight}[1]{%
+	\ifthenelse{\equal{\AT@hideall}{false}}%
+	{\colorbox{highlighter}{#1}}%
+	{#1}}
+
+
+\newcommand{\authormarker}[1]{%
+	\ifthenelse{\equal{\AT@hideall}{false}}%
+        {\makebox[0pt][l]{\raisebox{1.7ex}{\tiny #1}}}
+        {}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Define all comamnds for each author
+\newcommand{\defineauthor}[4]{%
+	% #1 - name
+	% #2 - handle (for callouts)
+	% #3 - short handle (single letter usually)
+	% #4 - preferred color
+	\newcounter{AT@#2@counter}
+	
+	\expandafter\newcommand\csname #3note\endcsname[2][]{%   	  
+		\ifthenelse{\equal{true}{\AT@active}}%
+		{\AT@note{#1}{AT@#2@counter}{#4}{##2}{wip}{\AT@hideauthornotes}{##1}}%
+		{\AT@note{#1}{AT@#2@counter}{#4}{##2}{done}{\AT@hidedoneauthornotes}{##1}}}
+	\expandafter\newcommand\csname #3notedone\endcsname[2][]{%   	  
+		\AT@note{#1}{AT@#2@counter}{#4}{##2}{done}{\AT@hidedoneauthornotes}{##1}}
+	\expandafter\newcommand\csname #3reply\endcsname[1]{%
+		\AT@reply{#1}{#4}{##1}}
+	\expandafter\newcommand\csname #3highlight\endcsname[1]{%
+		\highlight{##1}\authormarker{\color{#4}#1}}
+	% Define callout handle
+	\expandafter\newcommand\csname #2\endcsname[1][:]{{\color{#4}\textbf{#1##1}} }
+	\expandafter\newcommand\csname #3insert\endcsname[1]{%
+		\ifthenelse{\equal{\AT@hidechangetracking}{false}}{%
+			{\bf \cbstart}{\color{PineGreen}##1}\authormarker{\color{#4}#1}{\bf \cbend}}
+		{#1}}
+	\expandafter\newcommand\csname #3delete\endcsname[1]{%
+		\ifthenelse{\equal{\AT@hidechangetracking}{false}}{%
+			{\bf \cbstart}{\color{red}\sout{##1}}\authormarker{\color{#4}#1}{\bf \cbend}}
+		{}}
+	\expandafter\newcommand\csname #3changed\endcsname[2]{% new version, old version
+		\ifthenelse{\equal{\AT@hidechangetracking}{false}}{%
+			{\bf \cbstart}{\color{PineGreen}##1}{\color{red}\sout{##2}}\authormarker{\color{#4}#1}{\bf \cbend}}
+		{#1}}
+}   
+
+\makeatletter
+\newcommand{\cboff}{\let\end@float\ltx@end@float
+	\let\end@dblfloat\ltx@end@dblfloat
+}
+\newcommand{\cbon}{\let\end@float\cb@end@float
+	\let\end@dblfloat\cb@end@dblfloat}
+\makeatother
+
+
+\endinput
