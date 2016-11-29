@@ -1,6 +1,6 @@
 %%  Package authortools
 %%
-%% Written by: Arie Tal
+%% Author: Arie Tal
 %%
 %% This package provides useful tools for authors such as
 %%
@@ -128,8 +128,10 @@
 \newcommand{\AT@hideauthornotes}{\AT@hideall}
 \newcommand{\AT@hidedoneauthornotes}{true}
 \newcommand{\AT@hidechangetracking}{\AT@hideall}
+\newcommand{\AT@hidedeletions}{false}
 \newcommand{\AT@hidetodos}{\AT@hideall}
 \newcommand{\AT@hidecompletedtodos}{true}
+\newcommand{\AT@hideauthorlabels}{false}
 
 %% Some options to show/hide some of the annotations
 \DeclareOption{hideall}{
@@ -138,18 +140,49 @@
 \DeclareOption{hideauthornotes}{
 	\renewcommand{\AT@hideauthornotes}{true}
 }
+\DeclareOption{showauthornotes}{
+	\renewcommand{\AT@hideauthornotes}{true}
+}
 \DeclareOption{showdoneauthornotes}{
 	\renewcommand{\AT@hidedoneauthornotes}{false}
+}
+\DeclareOption{hidedoneauthornotes}{
+	\renewcommand{\AT@hidedoneauthornotes}{true}
 }
 
 \DeclareOption{hidechangetracking}{
 	\renewcommand{\AT@hidechangetracking}{true}
 }
+\DeclareOption{showchangetracking}{
+	\renewcommand{\AT@hidechangetracking}{false}
+}
+
+\DeclareOption{showauthorlabels}{
+	\renewcommand{\AT@hideauthorlabels}{false}
+}
+\DeclareOption{hideauthorlabels}{
+	\renewcommand{\AT@hideauthorlabels}{true}
+}
+
+
+\DeclareOption{hidedeletions}{
+	\renewcommand{\AT@hidedeletions}{true}
+}
+\DeclareOption{showdeletions}{
+	\renewcommand{\AT@hidedeletions}{false}
+}
+
 \DeclareOption{hidetodos}{
 	\renewcommand{\AT@hidetodos}{true}
 }
+\DeclareOption{showtodos}{
+	\renewcommand{\AT@hidetodos}{false}
+}
 \DeclareOption{showcompletedtodos}{
 	\renewcommand{\AT@hidecompletedtodos}{false}
+}
+\DeclareOption{hidecompletedtodos}{
+	\renewcommand{\AT@hidecompletedtodos}{ftrue}
 }
 
 %% ProcessOptions
@@ -372,9 +405,12 @@
 
 
 \newcommand{\authormarker}[1]{%
-	\ifthenelse{\equal{\AT@hideall}{false}}%
+	\ifthenelse{\equal{\AT@hideall}{false} \and \equal{\AT@hideauthorlabels}{false}}%
         {\makebox[0pt][l]{\raisebox{1.7ex}{\tiny #1}}}
         {}}
+
+\newcommand{\selectcolor}[2][PineGreen]{%
+	\ifthenelse{\equal{\AT@hideauthorlabels}{false}}{\color{#2}}{\color{#1}}}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Define all comamnds for each author
@@ -397,18 +433,19 @@
 		\highlight{##1}\authormarker{\color{#4}#1}}
 	% Define callout handle
 	\expandafter\newcommand\csname #2\endcsname[1][:]{{\color{#4}\textbf{#1##1}} }
-	\expandafter\newcommand\csname #3insert\endcsname[1]{%
+	\expandafter\newcommand\csname #3insert\endcsname[2][PineGreen]{%
 		\ifthenelse{\equal{\AT@hidechangetracking}{false}}{%
-			{\bf \cbstart}{\color{PineGreen}##1}\authormarker{\color{#4}#1}{\bf \cbend}}
-		{#1}}
+			{\bf \cbstart}{\selectcolor[##1]{#4}##2}\authormarker{\color{#4}#1}{\bf \cbend}}
+		{##2}}
 	\expandafter\newcommand\csname #3delete\endcsname[1]{%
-		\ifthenelse{\equal{\AT@hidechangetracking}{false}}{%
+		\ifthenelse{\equal{\AT@hidechangetracking}{false} \and \equal{\AT@hidedeletions}{false}}{%
 			{\bf \cbstart}{\color{red}\sout{##1}}\authormarker{\color{#4}#1}{\bf \cbend}}
 		{}}
-	\expandafter\newcommand\csname #3changed\endcsname[2]{% new version, old version
+	\expandafter\newcommand\csname #3changed\endcsname[3][PineGreen]{% version, new version, old version
 		\ifthenelse{\equal{\AT@hidechangetracking}{false}}{%
-			{\bf \cbstart}{\color{PineGreen}##1}{\color{red}\sout{##2}}\authormarker{\color{#4}#1}{\bf \cbend}}
-		{#1}}
+			{\bf \cbstart}{\selectcolor[##1]{#4}##2}{\ifthenelse{\equal{\AT@hidedeletions}{false}}{%
+					\color{red}\sout{##3}}{}}\authormarker{\color{#4}#1}{\bf \cbend}{}}
+		{##2}}
 }   
 
 \makeatletter
